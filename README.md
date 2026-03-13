@@ -71,11 +71,12 @@ let serverTime = try await GlobalTimeClient().fetchTime()
 ### Custom Server
 
 ```swift
-let client = GlobalTimeClient(config: GlobalTimeConfig(
+let config = GlobalTimeConfig(
     server: "time.google.com",
     timeout: .seconds(10),
     samples: 6
-))
+)
+let client = GlobalTimeClient(config: config)
 try await client.sync()
 ```
 
