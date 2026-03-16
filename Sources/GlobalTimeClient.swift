@@ -49,7 +49,7 @@ import os
 public final class GlobalTimeClient: Sendable {
 
     /// The current version of the GlobalTimeKit library.
-    public static let version = "1.0.0"
+    public static let version = "1.0.1"
 
     /// The configuration used by this client.
     public let config: GlobalTimeConfig
@@ -169,6 +169,52 @@ public final class GlobalTimeClient: Sendable {
         state.withLock { s in
             s.freeze?.now ?? Date()
         }
+    }
+
+    /// The corrected current time as a Unix timestamp (seconds since 1970-01-01 UTC).
+    ///
+    /// Useful for API requests, JWT tokens, and other systems requiring Unix time.
+    ///
+    /// ```swift
+    /// let timestamp = client.unixTimestamp
+    /// // Example: 1710598800.0
+    /// ```
+    public var unixTimestamp: TimeInterval {
+        now.timeIntervalSince1970
+    }
+
+    /// The corrected current time in ISO 8601 format with GMT timezone.
+    ///
+    /// Returns time in the format: `yyyy-MM-dd'T'HH:mm:ss'Z'`
+    ///
+    /// ```swift
+    /// let iso = client.iso8601GMT
+    /// // Example: "2026-03-16T14:30:00Z"
+    /// ```
+    public var iso8601GMT: String {
+        formattedGMT("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    }
+
+    /// Formats the corrected current time in GMT timezone with a custom format.
+    ///
+    /// Uses the Gregorian calendar with `en_US_POSIX` locale for consistent,
+    /// locale-independent formatting.
+    ///
+    /// - Parameter format: Date format string (e.g., `"yyyy-MM-dd HH:mm:ss"`).
+    ///   Defaults to ISO 8601 format.
+    /// - Returns: Formatted time string in GMT timezone.
+    ///
+    /// ```swift
+    /// let custom = client.formattedGMT("dd/MM/yyyy HH:mm")
+    /// // Example: "16/03/2026 14:30"
+    /// ```
+    public func formattedGMT(_ format: String = "yyyy-MM-dd'T'HH:mm:ss'Z'") -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = format
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        return formatter.string(from: now)
     }
 
     /// Whether the client has successfully synced at least once.

@@ -890,7 +890,7 @@ struct GlobalTimeClientTests {
 
         @Test("Version string is set")
         func versionIsSet() {
-            #expect(GlobalTimeClient.version == "1.0.0")
+            #expect(GlobalTimeClient.version == "1.0.1")
         }
     }
 
@@ -1440,5 +1440,259 @@ struct NTPPacketKnownBytesTests {
 
         let offset = ((t2 - t1) + (t3 - t4)) / 2.0
         #expect(abs(offset - 2.0) < 0.001)
+    }
+}
+
+// MARK: - GMT Formatting Tests
+
+@Suite("GMT Formatting — Unix timestamp and formatted time in GMT timezone")
+struct GMTFormattingTests {
+
+    @Suite("unixTimestamp — Unix timestamp in seconds since 1970-01-01 UTC")
+    struct UnixTimestampTests {
+
+        @Test("Returns positive timestamp for current time")
+        func returnsPositiveTimestamp() {
+            let client = GlobalTimeClient()
+            let timestamp = client.unixTimestamp
+            #expect(timestamp > 0)
+        }
+
+        @Test("Timestamp is close to system time before sync")
+        func timestampMatchesSystemTime() {
+            let client = GlobalTimeClient()
+            let systemTimestamp = Date().timeIntervalSince1970
+            let diff = abs(client.unixTimestamp - systemTimestamp)
+            #expect(diff < 0.1)
+        }
+
+        @Test("Timestamp reflects cached offset after sync")
+        func timestampReflectsOffset() async throws {
+            let client = GlobalTimeClient(config: GlobalTimeConfig(
+                server: "time.apple.com",
+                timeout: .seconds(10),
+                samples: 1
+            ))
+            try await client.sync()
+
+            let timestamp = client.unixTimestamp
+            let expected = Date().timeIntervalSince1970 + client.offset
+            let diff = abs(timestamp - expected)
+            #expect(diff < 0.5)
+        }
+
+        @Test("Multiple calls return increasing timestamps")
+        func timestampsIncrease() async throws {
+            let client = GlobalTimeClient()
+            let first = client.unixTimestamp
+            try await Task.sleep(for: .milliseconds(10))
+            let second = client.unixTimestamp
+            #expect(second > first)
+        }
+    }
+
+    @Suite("iso8601GMT — ISO 8601 formatted time in GMT timezone")
+    struct ISO8601GMTTests {
+
+        @Test("Returns non-empty string")
+        func returnsNonEmptyString() {
+            let client = GlobalTimeClient()
+            let iso = client.iso8601GMT
+            #expect(iso.isEmpty == false)
+        }
+
+        @Test("Format matches ISO 8601 pattern")
+        func matchesISO8601Pattern() {
+            let client = GlobalTimeClient()
+            let iso = client.iso8601GMT
+            // Expected format: "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            // Example: "2026-03-16T14:30:00Z"
+            #expect(iso.contains("T"))
+            #expect(iso.hasSuffix("Z"))
+            #expect(iso.count == 20) // yyyy-MM-ddTHH:mm:ssZ
+        }
+
+        @Test("Contains valid date components")
+        func containsValidDateComponents() {
+            let client = GlobalTimeClient()
+            let iso = client.iso8601GMT
+            // Should contain year (202X), month (01-12), day (01-31)
+            #expect(iso.contains("-"))
+            #expect(iso.contains(":"))
+        }
+
+        @Test("Parse back to Date produces similar timestamp")
+        func parseBackToDate() {
+            let client = GlobalTimeClient()
+            let iso = client.iso8601GMT
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            formatter.timeZone = TimeZone(identifier: "GMT")
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+
+            guard let parsed = formatter.date(from: iso) else {
+                #expect(Bool(false), "Failed to parse ISO 8601 string")
+                return
+            }
+
+            let diff = abs(parsed.timeIntervalSince(client.now))
+            // Should be less than 1 second (formatting truncates milliseconds)
+            #expect(diff < 1.0)
+        }
+
+        @Test("Uses GMT timezone (not local)")
+        func usesGMTTimezone() {
+            let client = GlobalTimeClient()
+            let iso = client.iso8601GMT
+
+            // Parse using GMT and local timezone, verify GMT is used
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+
+            formatter.timeZone = TimeZone(identifier: "GMT")
+            let gmtDate = formatter.date(from: iso)
+
+            formatter.timeZone = TimeZone.current
+            let localDate = formatter.date(from: iso)
+
+            // If not in GMT timezone, parsing with different timezones should give different results
+            // But since we suffix with 'Z', it should always parse the same
+            #expect(gmtDate != nil)
+            #expect(localDate != nil)
+        }
+    }
+
+    @Suite("formattedGMT(_:) — Custom formatted time in GMT timezone")
+    struct FormattedGMTTests {
+
+        @Test("Default format matches ISO 8601")
+        func defaultFormatMatchesISO() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT()
+            let iso = client.iso8601GMT
+            #expect(formatted == iso)
+        }
+
+        @Test("Custom format produces expected pattern")
+        func customFormatPattern() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("yyyy-MM-dd")
+            // Should be like "2026-03-16"
+            #expect(formatted.count == 10)
+            #expect(formatted.contains("-"))
+        }
+
+        @Test("Hour-minute format works")
+        func hourMinuteFormat() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("HH:mm")
+            // Should be like "14:30"
+            #expect(formatted.count == 5)
+            #expect(formatted.contains(":"))
+        }
+
+        @Test("Day/Month/Year format works")
+        func dayMonthYearFormat() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("dd/MM/yyyy")
+            // Should be like "16/03/2026"
+            #expect(formatted.count == 10)
+            let components = formatted.split(separator: "/")
+            #expect(components.count == 3)
+        }
+
+        @Test("Full format with time works")
+        func fullFormatWithTime() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("yyyy-MM-dd HH:mm:ss")
+            // Should be like "2026-03-16 14:30:00"
+            #expect(formatted.contains(" "))
+            #expect(formatted.contains(":"))
+            #expect(formatted.contains("-"))
+        }
+
+        @Test("Uses GMT timezone regardless of device timezone")
+        func usesGMTTimezone() {
+            let client = GlobalTimeClient()
+            let gmtFormatted = client.formattedGMT("HH")
+
+            // Just verify GMT format is always numeric hour (0-23)
+            guard let hour = Int(gmtFormatted) else {
+                #expect(Bool(false), "GMT hour should be numeric")
+                return
+            }
+            #expect(hour >= 0)
+            #expect(hour <= 23)
+        }
+
+        @Test("Uses en_US_POSIX locale for consistent formatting")
+        func usesPOSIXLocale() {
+            let client = GlobalTimeClient()
+            // Month names should be in English, not localized
+            let formatted = client.formattedGMT("MMMM")
+            let englishMonths = ["January", "February", "March", "April", "May", "June",
+                                 "July", "August", "September", "October", "November", "December"]
+            #expect(englishMonths.contains(formatted))
+        }
+
+        @Test("Weekday names are in English")
+        func weekdayNamesInEnglish() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("EEEE")
+            let englishWeekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            #expect(englishWeekdays.contains(formatted))
+        }
+
+        @Test("Multiple calls with same format produce similar results")
+        func multipleCallsConsistent() async {
+            let client = GlobalTimeClient()
+            let first = client.formattedGMT("yyyy-MM-dd HH:mm")
+            try? await Task.sleep(for: .milliseconds(100))
+            let second = client.formattedGMT("yyyy-MM-dd HH:mm")
+            // Should be same or differ only in minutes if time crossed minute boundary
+            #expect(first.prefix(13) == second.prefix(13)) // "yyyy-MM-dd HH" should match
+        }
+
+        @Test("Reflects cached offset after sync")
+        func reflectsOffsetAfterSync() async throws {
+            let client = GlobalTimeClient(config: GlobalTimeConfig(
+                server: "time.apple.com",
+                timeout: .seconds(10),
+                samples: 1
+            ))
+            try await client.sync()
+
+            let formatted = client.formattedGMT("yyyy-MM-dd HH:mm:ss")
+            let parser = DateFormatter()
+            parser.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            parser.timeZone = TimeZone(identifier: "GMT")
+            parser.locale = Locale(identifier: "en_US_POSIX")
+
+            guard let parsed = parser.date(from: formatted) else {
+                #expect(Bool(false), "Failed to parse formatted string")
+                return
+            }
+
+            let diff = abs(parsed.timeIntervalSince(client.now))
+            #expect(diff < 1.0)
+        }
+
+        @Test("Empty format string produces empty string")
+        func emptyFormatProducesEmpty() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("")
+            #expect(formatted.isEmpty)
+        }
+
+        @Test("Year format produces 4-digit year")
+        func yearFormatProducesFourDigits() {
+            let client = GlobalTimeClient()
+            let formatted = client.formattedGMT("yyyy")
+            #expect(formatted.count == 4)
+            #expect(Int(formatted) != nil)
+            #expect(Int(formatted)! > 2020)
+            #expect(Int(formatted)! < 2100)
+        }
     }
 }

@@ -20,7 +20,6 @@ In many applications it's critical to have a reliable timestamp — for token ge
 - **macOS** 13.0+
 - **tvOS** 16.0+
 - **watchOS** 9.0+
-- **visionOS** 1.0+
 
 ## Installation
 
@@ -137,6 +136,26 @@ do {
 }
 ```
 
+### GMT Formatting
+
+Get corrected time in GMT timezone, perfect for API requests and JWT tokens:
+
+```swift
+// Unix timestamp (seconds since 1970-01-01 UTC)
+let timestamp = client.unixTimestamp
+// Example: 1710598800.0
+
+// ISO 8601 format
+let iso = client.iso8601GMT
+// Example: "2026-03-16T14:30:00Z"
+
+// Custom format
+let custom = client.formattedGMT("dd/MM/yyyy HH:mm")
+// Example: "16/03/2026 14:30"
+```
+
+All formatting methods use `en_US_POSIX` locale and Gregorian calendar for consistent, locale-independent results.
+
 ## How It Works
 
 GlobalTimeKit sends a UDP packet to an NTP server and calculates the clock offset using the standard NTP formula:
@@ -153,33 +172,36 @@ Multiple samples are collected and the one with the lowest round-trip delay is s
 
 ### GlobalTimeClient
 
-| Property / Method | Description |
-|---|---|
-| `init(config:)` | Create a client with optional configuration |
-| `sync()` | Sync with NTP server, cache the offset |
-| `fetchTime()` | One-shot query, returns server time without caching |
-| `now` | Corrected time using cached offset (falls back to `Date()`) |
-| `isSynced` | Whether the client has synced at least once |
-| `offset` | Cached NTP offset in seconds |
-| `lastSyncDate` | Date of last successful sync |
+| Property / Method  | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `init(config:)`    | Create a client with optional configuration                 |
+| `sync()`           | Sync with NTP server, cache the offset                      |
+| `fetchTime()`      | One-shot query, returns server time without caching         |
+| `now`              | Corrected time using cached offset (falls back to `Date()`) |
+| `unixTimestamp`    | Unix timestamp in GMT (seconds since 1970-01-01 UTC)        |
+| `iso8601GMT`       | ISO 8601 formatted time in GMT timezone                     |
+| `formattedGMT(_:)` | Custom formatted time in GMT timezone                       |
+| `isSynced`         | Whether the client has synced at least once                 |
+| `offset`           | Cached NTP offset in seconds                                |
+| `lastSyncDate`     | Date of last successful sync                                |
 
 ### GlobalTimeConfig
 
-| Parameter | Default | Description |
-|---|---|---|
-| `server` | `"time.apple.com"` | NTP server hostname |
-| `timeout` | `.seconds(5)` | Timeout for a single NTP request |
-| `samples` | `4` | Number of NTP samples to collect |
+| Parameter | Default            | Description                      |
+| --------- | ------------------ | -------------------------------- |
+| `server`  | `"time.apple.com"` | NTP server hostname              |
+| `timeout` | `.seconds(5)`      | Timeout for a single NTP request |
+| `samples` | `4`                | Number of NTP samples to collect |
 
 ### GlobalTimeError
 
-| Case | Description |
-|---|---|
-| `.timeout` | Request timed out |
-| `.invalidResponse` | Server returned an invalid NTP packet |
-| `.dnsResolutionFailed` | Could not resolve server hostname |
-| `.networkUnavailable` | No network connection |
-| `.serverUnreachable` | NTP server is unreachable |
+| Case                   | Description                           |
+| ---------------------- | ------------------------------------- |
+| `.timeout`             | Request timed out                     |
+| `.invalidResponse`     | Server returned an invalid NTP packet |
+| `.dnsResolutionFailed` | Could not resolve server hostname     |
+| `.networkUnavailable`  | No network connection                 |
+| `.serverUnreachable`   | NTP server is unreachable             |
 
 ## License
 
