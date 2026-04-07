@@ -156,6 +156,39 @@ let custom = client.formattedGMT("dd/MM/yyyy HH:mm")
 
 All formatting methods use `en_US_POSIX` locale and Gregorian calendar for consistent, locale-independent results.
 
+### Auto-Syncing Client
+
+`GlobalTimeAutoClient` wraps `GlobalTimeClient` and automatically re-syncs when the network is restored or the app returns to the foreground:
+
+```swift
+let client = GlobalTimeAutoClient()
+
+// First sync is explicit, as usual
+try await client.sync()
+
+// From now on, re-syncs happen automatically:
+// — when network connectivity is restored
+// — when the app becomes active (foreground)
+// — with exponential backoff retry on failure
+let now = client.now
+```
+
+Custom retry configuration:
+
+```swift
+let client = GlobalTimeAutoClient(
+    config: GlobalTimeConfig(server: "time.google.com"),
+    maxRetries: 5,
+    retryBaseDelay: .seconds(2)
+)
+```
+
+Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to `GlobalTimeClientProtocol`, so they can be used interchangeably:
+
+```swift
+let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient()
+```
+
 ## How It Works
 
 GlobalTimeKit sends a UDP packet to an NTP server and calculates the clock offset using the standard NTP formula:
@@ -169,6 +202,22 @@ Where T1–T4 are the four timestamps from the NTP exchange. The offset is cache
 Multiple samples are collected and the one with the lowest round-trip delay is selected for maximum accuracy.
 
 ## API Reference
+
+### GlobalTimeClientProtocol
+
+Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to this protocol.
+
+| Property / Method  | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `sync()`           | Sync with NTP server, cache the offset                      |
+| `fetchTime()`      | One-shot query, returns server time without caching         |
+| `now`              | Corrected time using cached offset (falls back to `Date()`) |
+| `unixTimestamp`    | Unix timestamp in GMT (seconds since 1970-01-01 UTC)        |
+| `iso8601GMT`       | ISO 8601 formatted time in GMT timezone                     |
+| `formattedGMT(_:)` | Custom formatted time in GMT timezone                       |
+| `isSynced`         | Whether the client has synced at least once                 |
+| `offset`           | Cached NTP offset in seconds                                |
+| `lastSyncDate`     | Date of last successful sync                                |
 
 ### GlobalTimeClient
 
@@ -184,6 +233,14 @@ Multiple samples are collected and the one with the lowest round-trip delay is s
 | `isSynced`         | Whether the client has synced at least once                 |
 | `offset`           | Cached NTP offset in seconds                                |
 | `lastSyncDate`     | Date of last successful sync                                |
+
+### GlobalTimeAutoClient
+
+| Parameter        | Default        | Description                                              |
+| ---------------- | -------------- | -------------------------------------------------------- |
+| `config`         | `GlobalTimeConfig()` | NTP configuration                                  |
+| `maxRetries`     | `3`            | Max retry attempts after a failed auto re-sync           |
+| `retryBaseDelay` | `.seconds(2)`  | Initial retry delay; doubles with each attempt           |
 
 ### GlobalTimeConfig
 

@@ -46,7 +46,7 @@ import os
 ///
 /// `GlobalTimeClient` is fully `Sendable` and safe to use from any thread or actor.
 /// Internal state is protected by `OSAllocatedUnfairLock`.
-public final class GlobalTimeClient: Sendable {
+public final class GlobalTimeClient: GlobalTimeClientProtocol {
 
     /// The current version of the GlobalTimeKit library.
     public static let version = "1.0.1"
@@ -233,63 +233,5 @@ public final class GlobalTimeClient: Sendable {
     /// The date of the last successful synchronization, or `nil` if never synced.
     public var lastSyncDate: Date? {
         state.withLock { $0.lastSyncDate }
-    }
-
-    // MARK: - Callback API
-
-    /// Synchronizes with the NTP server using a completion handler.
-    ///
-    /// This is a convenience wrapper for projects that don't use `async/await`.
-    ///
-    /// - Parameter completion: Called with `.success(())` on success
-    ///   or `.failure(error)` on failure.
-    ///
-    /// ```swift
-    /// client.sync { result in
-    ///     switch result {
-    ///     case .success:
-    ///         print("Synced! Offset: \(client.offset)")
-    ///     case .failure(let error):
-    ///         print("Error: \(error)")
-    ///     }
-    /// }
-    /// ```
-    public func sync(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
-        Task {
-            do {
-                try await self.sync()
-                completion(.success(()))
-            } catch {
-                completion(.failure(error))
-            }
-        }
-    }
-
-    /// Fetches the server time using a completion handler.
-    ///
-    /// This is a convenience wrapper for projects that don't use `async/await`.
-    ///
-    /// - Parameter completion: Called with `.success(date)` on success
-    ///   or `.failure(error)` on failure.
-    ///
-    /// ```swift
-    /// client.fetchTime { result in
-    ///     switch result {
-    ///     case .success(let date):
-    ///         print("Server time: \(date)")
-    ///     case .failure(let error):
-    ///         print("Error: \(error)")
-    ///     }
-    /// }
-    /// ```
-    public func fetchTime(completion: @escaping @Sendable (Result<Date, Error>) -> Void) {
-        Task {
-            do {
-                let date = try await self.fetchTime()
-                completion(.success(date))
-            } catch {
-                completion(.failure(error))
-            }
-        }
     }
 }

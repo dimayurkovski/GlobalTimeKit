@@ -1443,6 +1443,363 @@ struct NTPPacketKnownBytesTests {
     }
 }
 
+// MARK: - GlobalTimeClientProtocol Tests
+
+@Suite("GlobalTimeClientProtocol — Shared interface and default callback implementations")
+struct GlobalTimeClientProtocolTests {
+
+    @Suite("Conformance — Both clients implement the protocol")
+    struct ConformanceTests {
+
+        @Test("GlobalTimeClient conforms to GlobalTimeClientProtocol")
+        func globalTimeClientConforms() {
+            let client: any GlobalTimeClientProtocol = GlobalTimeClient()
+            #expect(client.isSynced == false)
+        }
+
+        @Test("GlobalTimeAutoClient conforms to GlobalTimeClientProtocol")
+        func globalTimeAutoClientConforms() {
+            let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient()
+            #expect(client.isSynced == false)
+        }
+
+        @Test("Both clients can be stored in same array via protocol")
+        func polymorphicArray() {
+            let clients: [any GlobalTimeClientProtocol] = [
+                GlobalTimeClient(),
+                GlobalTimeAutoClient()
+            ]
+            for client in clients {
+                #expect(client.isSynced == false)
+                #expect(client.offset == 0)
+                #expect(client.lastSyncDate == nil)
+            }
+        }
+    }
+
+    @Suite("Default Callback API — Extension-provided completion handlers")
+    struct DefaultCallbackTests {
+
+        @Test("sync(completion:) on GlobalTimeClient reports failure for invalid server")
+        func syncCallbackOnClientFails() async {
+            let client: any GlobalTimeClientProtocol = GlobalTimeClient(config: GlobalTimeConfig(
+                server: "invalid.nonexistent.server.xyz",
+                timeout: .seconds(2),
+                samples: 1
+            ))
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                client.sync { result in
+                    if case .failure(let error) = result {
+                        #expect(error is GlobalTimeError)
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+
+        @Test("fetchTime(completion:) on GlobalTimeClient reports failure for invalid server")
+        func fetchTimeCallbackOnClientFails() async {
+            let client: any GlobalTimeClientProtocol = GlobalTimeClient(config: GlobalTimeConfig(
+                server: "invalid.nonexistent.server.xyz",
+                timeout: .seconds(2),
+                samples: 1
+            ))
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                client.fetchTime { result in
+                    if case .failure(let error) = result {
+                        #expect(error is GlobalTimeError)
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+
+        @Test("sync(completion:) on GlobalTimeAutoClient reports failure for invalid server")
+        func syncCallbackOnAutoClientFails() async {
+            let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "invalid.nonexistent.server.xyz",
+                    timeout: .seconds(2),
+                    samples: 1
+                )
+            )
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                client.sync { result in
+                    if case .failure(let error) = result {
+                        #expect(error is GlobalTimeError)
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+
+        @Test("fetchTime(completion:) on GlobalTimeAutoClient reports failure for invalid server")
+        func fetchTimeCallbackOnAutoClientFails() async {
+            let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "invalid.nonexistent.server.xyz",
+                    timeout: .seconds(2),
+                    samples: 1
+                )
+            )
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                client.fetchTime { result in
+                    if case .failure(let error) = result {
+                        #expect(error is GlobalTimeError)
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - GlobalTimeAutoClient Tests
+
+@Suite("GlobalTimeAutoClient — Smart NTP client with automatic re-sync")
+struct GlobalTimeAutoClientTests {
+
+    @Suite("Initialization — Default and custom configurations")
+    struct InitTests {
+
+        @Test("Default initialization uses default NTP config")
+        func defaultInit() {
+            let client = GlobalTimeAutoClient()
+            #expect(client.isSynced == false)
+            #expect(client.offset == 0)
+            #expect(client.lastSyncDate == nil)
+        }
+
+        @Test("Custom config is forwarded to inner client")
+        func customConfig() {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(server: "time.google.com", timeout: .seconds(10), samples: 6)
+            )
+            #expect(client.isSynced == false)
+        }
+
+        @Test("Custom maxRetries is accepted")
+        func customMaxRetries() {
+            let client = GlobalTimeAutoClient(maxRetries: 5)
+            #expect(client.isSynced == false)
+        }
+
+        @Test("Custom retryBaseDelay is accepted")
+        func customRetryBaseDelay() {
+            let client = GlobalTimeAutoClient(retryBaseDelay: .seconds(10))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("Zero maxRetries is accepted")
+        func zeroMaxRetries() {
+            let client = GlobalTimeAutoClient(maxRetries: 0)
+            #expect(client.isSynced == false)
+        }
+    }
+
+    @Suite("Initial State — Before any sync call")
+    struct InitialStateTests {
+
+        @Test("isSynced is false before sync")
+        func notSynced() {
+            #expect(GlobalTimeAutoClient().isSynced == false)
+        }
+
+        @Test("offset is 0 before sync")
+        func zeroOffset() {
+            #expect(GlobalTimeAutoClient().offset == 0)
+        }
+
+        @Test("lastSyncDate is nil before sync")
+        func nilLastSyncDate() {
+            #expect(GlobalTimeAutoClient().lastSyncDate == nil)
+        }
+
+        @Test("now falls back to approximately system time before sync")
+        func nowFallsBackToSystemTime() {
+            let client = GlobalTimeAutoClient()
+            let before = Date().addingTimeInterval(-0.1)
+            let now = client.now
+            let after = Date().addingTimeInterval(0.1)
+            #expect(now >= before)
+            #expect(now <= after)
+        }
+
+        @Test("unixTimestamp is close to system time before sync")
+        func unixTimestampBeforeSync() {
+            let client = GlobalTimeAutoClient()
+            let diff = abs(client.unixTimestamp - Date().timeIntervalSince1970)
+            #expect(diff < 0.1)
+        }
+
+        @Test("iso8601GMT returns non-empty string before sync")
+        func iso8601GMTBeforeSync() {
+            let client = GlobalTimeAutoClient()
+            #expect(client.iso8601GMT.isEmpty == false)
+        }
+
+        @Test("formattedGMT returns non-empty string before sync")
+        func formattedGMTBeforeSync() {
+            let client = GlobalTimeAutoClient()
+            #expect(client.formattedGMT("yyyy").isEmpty == false)
+        }
+    }
+
+    @Suite("Error Handling — Invalid server scenarios")
+    struct ErrorHandlingTests {
+
+        @Test("sync() throws GlobalTimeError for invalid server")
+        func syncThrowsForInvalidServer() async {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "invalid.nonexistent.server.xyz",
+                    timeout: .seconds(2),
+                    samples: 1
+                )
+            )
+            do {
+                try await client.sync()
+                #expect(Bool(false), "Should have thrown")
+            } catch {
+                #expect(error is GlobalTimeError)
+            }
+        }
+
+        @Test("fetchTime() throws GlobalTimeError for invalid server")
+        func fetchTimeThrowsForInvalidServer() async {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "invalid.nonexistent.server.xyz",
+                    timeout: .seconds(2),
+                    samples: 1
+                )
+            )
+            do {
+                _ = try await client.fetchTime()
+                #expect(Bool(false), "Should have thrown")
+            } catch {
+                #expect(error is GlobalTimeError)
+            }
+        }
+
+        @Test("Client remains not synced after failed sync")
+        func remainsNotSyncedAfterFailure() async {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "invalid.nonexistent.server.xyz",
+                    timeout: .seconds(2),
+                    samples: 1
+                )
+            )
+            try? await client.sync()
+            #expect(client.isSynced == false)
+            #expect(client.offset == 0)
+            #expect(client.lastSyncDate == nil)
+        }
+    }
+
+    @Suite("Concurrency — Thread safety")
+    struct ConcurrencyTests {
+
+        @Test("GlobalTimeAutoClient conforms to Sendable")
+        func isSendable() {
+            let client = GlobalTimeAutoClient()
+            Task { @Sendable in
+                _ = client.now
+                _ = client.isSynced
+                _ = client.offset
+                _ = client.lastSyncDate
+            }
+        }
+
+        @Test("Concurrent property reads don't crash")
+        func concurrentPropertyReads() async {
+            let client = GlobalTimeAutoClient()
+            await withTaskGroup(of: Void.self) { group in
+                for _ in 0..<100 {
+                    group.addTask {
+                        _ = client.now
+                        _ = client.isSynced
+                        _ = client.offset
+                        _ = client.lastSyncDate
+                        _ = client.unixTimestamp
+                        _ = client.iso8601GMT
+                    }
+                }
+            }
+        }
+    }
+
+    @Suite("Integration — End-to-end with real NTP server")
+    struct IntegrationTests {
+
+        @Test("sync() succeeds and caches offset")
+        func syncWithRealServer() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10),
+                    samples: 1
+                )
+            )
+            try await client.sync()
+            #expect(client.isSynced == true)
+            #expect(client.lastSyncDate != nil)
+            #expect(abs(client.offset) < 60)
+        }
+
+        @Test("now is close to system time after sync")
+        func nowAfterSync() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10),
+                    samples: 1
+                )
+            )
+            try await client.sync()
+            let diff = abs(client.now.timeIntervalSince(Date()))
+            #expect(diff < 60)
+        }
+
+        @Test("fetchTime() returns server time without caching")
+        func fetchTimeDoesNotCache() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10)
+                )
+            )
+            _ = try await client.fetchTime()
+            #expect(client.isSynced == false)
+            #expect(client.lastSyncDate == nil)
+        }
+
+        @Test("Re-sync updates lastSyncDate")
+        func reSyncUpdatesLastSyncDate() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10),
+                    samples: 1
+                )
+            )
+            try await client.sync()
+            let first = client.lastSyncDate
+
+            try await Task.sleep(for: .milliseconds(100))
+            try await client.sync()
+            let second = client.lastSyncDate
+
+            guard let f = first, let s = second else {
+                #expect(Bool(false), "Both sync dates should be set")
+                return
+            }
+            #expect(s > f)
+        }
+    }
+}
+
 // MARK: - GMT Formatting Tests
 
 @Suite("GMT Formatting — Unix timestamp and formatted time in GMT timezone")
