@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 
 import PackageDescription
 
@@ -26,6 +26,5 @@ let package = Package(
             dependencies: ["GlobalTimeKit"],
             path: "GlobalTimeKitTests"
         )
-    ],
-    swiftLanguageModes: [.v5, .v6]
+    ]
 )
