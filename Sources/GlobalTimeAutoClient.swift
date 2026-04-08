@@ -63,6 +63,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     private struct SyncState {
         var isSyncedOnce: Bool = false
         var retryTask: Task<Void, Never>?
+        var isStopped: Bool = false
     }
 
     // MARK: - Init
@@ -90,7 +91,19 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     }
 
     deinit {
+        stop()
+    }
+
+    /// Stops all automatic monitoring: network reachability, foreground detection, and pending retries.
+    /// After calling `stop()`, the client will no longer re-sync automatically.
+    public func stop() {
+        syncLock.withLock { state in
+            state.isStopped = true
+            state.retryTask?.cancel()
+            state.retryTask = nil
+        }
         monitor.cancel()
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - GlobalTimeClientProtocol
@@ -126,7 +139,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             guard path.status == .satisfied else { return }
-            guard self.syncLock.withLock({ $0.isSyncedOnce }) else { return }
+            guard self.syncLock.withLock({ $0.isSyncedOnce && !$0.isStopped }) else { return }
             self.logger.log(.info, "Network restored — scheduling re-sync")
             self.scheduleResync()
         }
@@ -162,7 +175,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     }
 
     private func handleForeground() {
-        guard syncLock.withLock({ $0.isSyncedOnce }) else { return }
+        guard syncLock.withLock({ $0.isSyncedOnce && !$0.isStopped }) else { return }
         logger.log(.info, "App became active — scheduling re-sync")
         scheduleResync()
     }

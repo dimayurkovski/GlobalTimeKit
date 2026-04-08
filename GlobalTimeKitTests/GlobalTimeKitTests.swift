@@ -1798,6 +1798,86 @@ struct GlobalTimeAutoClientTests {
             #expect(s > f)
         }
     }
+
+    @Suite("stop() — Monitoring lifecycle")
+    struct StopTests {
+
+        @Test("stop() can be called before first sync without crashing")
+        func stopBeforeSync() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+        }
+
+        @Test("stop() can be called multiple times without crashing")
+        func stopCalledTwice() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+            client.stop()
+        }
+
+        @Test("isSynced remains false after stop() when never synced")
+        func isSyncedFalseAfterStop() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+            #expect(client.isSynced == false)
+        }
+
+        @Test("offset remains 0 after stop() when never synced")
+        func offsetZeroAfterStop() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+            #expect(client.offset == 0)
+        }
+
+        @Test("lastSyncDate remains nil after stop() when never synced")
+        func lastSyncDateNilAfterStop() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+            #expect(client.lastSyncDate == nil)
+        }
+
+        @Test("now still returns a valid date after stop()")
+        func nowStillWorksAfterStop() {
+            let client = GlobalTimeAutoClient()
+            client.stop()
+            let before = Date().addingTimeInterval(-0.1)
+            let now = client.now
+            let after = Date().addingTimeInterval(0.1)
+            #expect(now >= before)
+            #expect(now <= after)
+        }
+
+        @Test("stop() after sync preserves cached offset")
+        func stopAfterSyncPreservesOffset() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10),
+                    samples: 1
+                )
+            )
+            try await client.sync()
+            let offsetBefore = client.offset
+            client.stop()
+            #expect(client.offset == offsetBefore)
+            #expect(client.isSynced == true)
+        }
+
+        @Test("stop() after sync preserves lastSyncDate")
+        func stopAfterSyncPreservesLastSyncDate() async throws {
+            let client = GlobalTimeAutoClient(
+                config: GlobalTimeConfig(
+                    server: "time.apple.com",
+                    timeout: .seconds(10),
+                    samples: 1
+                )
+            )
+            try await client.sync()
+            let dateBefore = client.lastSyncDate
+            client.stop()
+            #expect(client.lastSyncDate == dateBefore)
+        }
+    }
 }
 
 // MARK: - GMT Formatting Tests
@@ -2053,3 +2133,4 @@ struct GMTFormattingTests {
         }
     }
 }
+
