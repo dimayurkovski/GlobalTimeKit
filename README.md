@@ -91,6 +91,42 @@ if client.isSynced {
 }
 ```
 
+### Auto-Syncing Client
+
+`GlobalTimeAutoClient` wraps `GlobalTimeClient` and automatically re-syncs when the network is restored or the app returns to the foreground:
+
+```swift
+let client = GlobalTimeAutoClient()
+
+// First sync is explicit, as usual
+try await client.sync()
+
+// From now on, re-syncs happen automatically:
+// — when network connectivity is restored
+// — when the app becomes active (foreground)
+// — with exponential backoff retry on failure
+let now = client.now
+```
+
+Custom configuration:
+
+```swift
+let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(
+    server: "time.google.com",
+    maxRetries: 5,
+    retryBaseDelay: .seconds(2),
+    alwaysReactToEvents: true
+))
+```
+
+By default, auto re-sync only triggers after the first successful sync. Set `alwaysReactToEvents: true` to react to network and foreground events even before the first sync.
+
+Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to `GlobalTimeClientProtocol`, so they can be used interchangeably:
+
+```swift
+let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient()
+```
+
 ### Completion Handler API
 
 For projects that don't use async/await:
@@ -156,39 +192,6 @@ let custom = client.formattedGMT("dd/MM/yyyy HH:mm")
 
 All formatting methods use `en_US_POSIX` locale and Gregorian calendar for consistent, locale-independent results.
 
-### Auto-Syncing Client
-
-`GlobalTimeAutoClient` wraps `GlobalTimeClient` and automatically re-syncs when the network is restored or the app returns to the foreground:
-
-```swift
-let client = GlobalTimeAutoClient()
-
-// First sync is explicit, as usual
-try await client.sync()
-
-// From now on, re-syncs happen automatically:
-// — when network connectivity is restored
-// — when the app becomes active (foreground)
-// — with exponential backoff retry on failure
-let now = client.now
-```
-
-Custom retry configuration:
-
-```swift
-let client = GlobalTimeAutoClient(
-    config: GlobalTimeConfig(server: "time.google.com"),
-    maxRetries: 5,
-    retryBaseDelay: .seconds(2)
-)
-```
-
-Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to `GlobalTimeClientProtocol`, so they can be used interchangeably:
-
-```swift
-let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient()
-```
-
 ## How It Works
 
 GlobalTimeKit sends a UDP packet to an NTP server and calculates the clock offset using the standard NTP formula:
@@ -219,6 +222,22 @@ Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to this protocol.
 | `offset`           | Cached NTP offset in seconds                                |
 | `lastSyncDate`     | Date of last successful sync                                |
 
+### GlobalTimeAutoClient
+
+Takes a single `GlobalTimeAutoConfig` parameter (defaults to `.init()`).
+
+### GlobalTimeAutoConfig
+
+| Parameter             | Default              | Description                                              |
+| --------------------- | -------------------- | -------------------------------------------------------- |
+| `server`              | `"time.apple.com"`   | NTP server hostname                                      |
+| `timeout`             | `.seconds(5)`        | Timeout for a single NTP request                         |
+| `samples`             | `4`                  | Number of NTP samples to collect                         |
+| `logLevel`            | `.info`              | Diagnostic log verbosity                                 |
+| `maxRetries`          | `3`                  | Max retry attempts after a failed auto re-sync           |
+| `retryBaseDelay`      | `.seconds(2)`        | Initial retry delay; doubles with each attempt           |
+| `alwaysReactToEvents` | `false`              | Re-sync on events even before the first successful sync  |
+
 ### GlobalTimeClient
 
 | Property / Method  | Description                                                 |
@@ -234,21 +253,14 @@ Both `GlobalTimeClient` and `GlobalTimeAutoClient` conform to this protocol.
 | `offset`           | Cached NTP offset in seconds                                |
 | `lastSyncDate`     | Date of last successful sync                                |
 
-### GlobalTimeAutoClient
-
-| Parameter        | Default        | Description                                              |
-| ---------------- | -------------- | -------------------------------------------------------- |
-| `config`         | `GlobalTimeConfig()` | NTP configuration                                  |
-| `maxRetries`     | `3`            | Max retry attempts after a failed auto re-sync           |
-| `retryBaseDelay` | `.seconds(2)`  | Initial retry delay; doubles with each attempt           |
-
 ### GlobalTimeConfig
 
-| Parameter | Default            | Description                      |
-| --------- | ------------------ | -------------------------------- |
-| `server`  | `"time.apple.com"` | NTP server hostname              |
-| `timeout` | `.seconds(5)`      | Timeout for a single NTP request |
-| `samples` | `4`                | Number of NTP samples to collect |
+| Parameter  | Default            | Description                      |
+| ---------- | ------------------ | -------------------------------- |
+| `server`   | `"time.apple.com"` | NTP server hostname              |
+| `timeout`  | `.seconds(5)`      | Timeout for a single NTP request |
+| `samples`  | `4`                | Number of NTP samples to collect |
+| `logLevel` | `.info`            | Diagnostic log verbosity         |
 
 ### GlobalTimeError
 

@@ -7,11 +7,11 @@ import Foundation
 import Network
 import os
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
-#elseif canImport(WatchKit)
+#elseif os(watchOS)
 import WatchKit
 #endif
 
@@ -39,11 +39,11 @@ import WatchKit
 /// ## Custom Configuration
 ///
 /// ```swift
-/// let client = GlobalTimeAutoClient(
-///     config: GlobalTimeConfig(server: "time.google.com"),
+/// let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(
+///     server: "time.google.com",
 ///     maxRetries: 5,
-///     retryBaseDelay: .seconds(2)
-/// )
+///     alwaysReactToEvents: true
+/// ))
 /// try await client.sync()
 /// ```
 public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
@@ -51,8 +51,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     // MARK: - Private State
 
     private let inner: GlobalTimeClient
-    private let maxRetries: Int
-    private let retryBaseDelay: Duration
+    private let config: GlobalTimeAutoConfig
     private let logger: GTKLogger
 
     private let monitor: NWPathMonitor
@@ -70,18 +69,10 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
 
     /// Creates a new auto-syncing client.
     ///
-    /// - Parameters:
-    ///   - config: NTP configuration. Uses defaults when omitted.
-    ///   - maxRetries: Maximum number of retry attempts after a failed sync. Default: `3`.
-    ///   - retryBaseDelay: Initial delay before the first retry. Doubles with each attempt. Default: `.seconds(2)`.
-    public init(
-        config: GlobalTimeConfig = .init(),
-        maxRetries: Int = 3,
-        retryBaseDelay: Duration = .seconds(2)
-    ) {
-        self.inner = GlobalTimeClient(config: config)
-        self.maxRetries = maxRetries
-        self.retryBaseDelay = retryBaseDelay
+    /// - Parameter config: Auto-sync configuration. Uses defaults when omitted.
+    public init(config: GlobalTimeAutoConfig = .init()) {
+        self.config = config
+        self.inner = GlobalTimeClient(config: config.ntpConfig)
         self.logger = GTKLogger(level: config.logLevel)
         self.monitor = NWPathMonitor()
         self.monitorQueue = DispatchQueue(label: "com.globaltimekit.automonitor", qos: .utility)
@@ -139,7 +130,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             guard path.status == .satisfied else { return }
-            guard self.syncLock.withLock({ $0.isSyncedOnce && !$0.isStopped }) else { return }
+            guard self.syncLock.withLock({ (self.config.alwaysReactToEvents || $0.isSyncedOnce) && !$0.isStopped }) else { return }
             self.logger.log(.info, "Network restored — scheduling re-sync")
             self.scheduleResync()
         }
@@ -147,7 +138,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     }
 
     private func setupForegroundMonitor() {
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
@@ -163,9 +154,9 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
         ) { [weak self] _ in
             self?.handleForeground()
         }
-#elseif canImport(WatchKit)
+#elseif os(watchOS)
         NotificationCenter.default.addObserver(
-            forName: WKExtension.applicationDidBecomeActiveNotification,
+            forName: NSNotification.Name("WKApplicationDidBecomeActiveNotification"),
             object: nil,
             queue: nil
         ) { [weak self] _ in
@@ -175,7 +166,7 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     }
 
     private func handleForeground() {
-        guard syncLock.withLock({ $0.isSyncedOnce && !$0.isStopped }) else { return }
+        guard syncLock.withLock({ (config.alwaysReactToEvents || $0.isSyncedOnce) && !$0.isStopped }) else { return }
         logger.log(.info, "App became active — scheduling re-sync")
         scheduleResync()
     }
@@ -190,16 +181,16 @@ public final class GlobalTimeAutoClient: GlobalTimeClientProtocol {
     }
 
     private func resyncWithRetry() async {
-        var delay = retryBaseDelay
-        for attempt in 1...max(1, maxRetries + 1) {
+        var delay = config.retryBaseDelay
+        for attempt in 1...max(1, config.maxRetries + 1) {
             guard !Task.isCancelled else { return }
             do {
                 try await inner.sync()
                 logger.log(.info, "Auto re-sync succeeded")
                 return
             } catch {
-                if attempt > maxRetries {
-                    logger.log(.error, "Auto re-sync failed after \(maxRetries) retries: \(error.localizedDescription)")
+                if attempt > config.maxRetries {
+                    logger.log(.error, "Auto re-sync failed after \(config.maxRetries) retries: \(error.localizedDescription)")
                     return
                 }
                 logger.log(.warning, "Auto re-sync attempt \(attempt) failed, retrying in \(delay)s")

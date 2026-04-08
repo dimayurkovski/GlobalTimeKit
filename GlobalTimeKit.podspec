@@ -1,13 +1,13 @@
 Pod::Spec.new do |s|
   s.name         = 'GlobalTimeKit'
-  s.version      = '1.1.2'
+  s.version      = '1.2.0'
   s.summary      = 'Lightweight NTP client for Swift. Get accurate server time on Apple platforms.'
   s.homepage     = 'https://github.com/dimayurkovski/GlobalTimeKit'
   s.license      = { :type => 'MIT', :file => 'LICENSE' }
   s.author       = { 'Dima Yurkovski' => 'dima.yurkovski@gmail.com' }
   s.source       = { :git => 'https://github.com/dimayurkovski/GlobalTimeKit.git', :tag => s.version.to_s }
 
-  s.swift_versions = ['5.9', '5.10', '6.0']
+  s.swift_versions = ['5.9', '5.10', '6']
 
   s.ios.deployment_target     = '16.0'
   s.osx.deployment_target     = '13.0'

@@ -1517,7 +1517,7 @@ struct GlobalTimeClientProtocolTests {
         @Test("sync(completion:) on GlobalTimeAutoClient reports failure for invalid server")
         func syncCallbackOnAutoClientFails() async {
             let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "invalid.nonexistent.server.xyz",
                     timeout: .seconds(2),
                     samples: 1
@@ -1536,7 +1536,7 @@ struct GlobalTimeClientProtocolTests {
         @Test("fetchTime(completion:) on GlobalTimeAutoClient reports failure for invalid server")
         func fetchTimeCallbackOnAutoClientFails() async {
             let client: any GlobalTimeClientProtocol = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "invalid.nonexistent.server.xyz",
                     timeout: .seconds(2),
                     samples: 1
@@ -1573,26 +1573,56 @@ struct GlobalTimeAutoClientTests {
         @Test("Custom config is forwarded to inner client")
         func customConfig() {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(server: "time.google.com", timeout: .seconds(10), samples: 6)
+                config: GlobalTimeAutoConfig(server: "time.google.com", timeout: .seconds(10), samples: 6)
             )
             #expect(client.isSynced == false)
         }
 
         @Test("Custom maxRetries is accepted")
         func customMaxRetries() {
-            let client = GlobalTimeAutoClient(maxRetries: 5)
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(maxRetries: 5))
             #expect(client.isSynced == false)
         }
 
         @Test("Custom retryBaseDelay is accepted")
         func customRetryBaseDelay() {
-            let client = GlobalTimeAutoClient(retryBaseDelay: .seconds(10))
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(retryBaseDelay: .seconds(10)))
             #expect(client.isSynced == false)
         }
 
         @Test("Zero maxRetries is accepted")
         func zeroMaxRetries() {
-            let client = GlobalTimeAutoClient(maxRetries: 0)
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(maxRetries: 0))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents defaults to false")
+        func alwaysReactToEventsDefaultsFalse() {
+            let client = GlobalTimeAutoClient()
+            #expect(client.isSynced == false)
+            // Default behavior: does not react to events before first sync
+        }
+
+        @Test("alwaysReactToEvents true is accepted")
+        func alwaysReactToEventsTrue() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: true))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents false is accepted")
+        func alwaysReactToEventsFalse() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: false))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents can be combined with other parameters")
+        func alwaysReactToEventsCombined() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(
+                server: "time.google.com",
+                maxRetries: 5,
+                retryBaseDelay: .seconds(1),
+                alwaysReactToEvents: true
+            ))
             #expect(client.isSynced == false)
         }
     }
@@ -1651,7 +1681,7 @@ struct GlobalTimeAutoClientTests {
         @Test("sync() throws GlobalTimeError for invalid server")
         func syncThrowsForInvalidServer() async {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "invalid.nonexistent.server.xyz",
                     timeout: .seconds(2),
                     samples: 1
@@ -1668,7 +1698,7 @@ struct GlobalTimeAutoClientTests {
         @Test("fetchTime() throws GlobalTimeError for invalid server")
         func fetchTimeThrowsForInvalidServer() async {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "invalid.nonexistent.server.xyz",
                     timeout: .seconds(2),
                     samples: 1
@@ -1685,7 +1715,7 @@ struct GlobalTimeAutoClientTests {
         @Test("Client remains not synced after failed sync")
         func remainsNotSyncedAfterFailure() async {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "invalid.nonexistent.server.xyz",
                     timeout: .seconds(2),
                     samples: 1
@@ -1736,7 +1766,7 @@ struct GlobalTimeAutoClientTests {
         @Test("sync() succeeds and caches offset")
         func syncWithRealServer() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10),
                     samples: 1
@@ -1751,7 +1781,7 @@ struct GlobalTimeAutoClientTests {
         @Test("now is close to system time after sync")
         func nowAfterSync() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10),
                     samples: 1
@@ -1765,7 +1795,7 @@ struct GlobalTimeAutoClientTests {
         @Test("fetchTime() returns server time without caching")
         func fetchTimeDoesNotCache() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10)
                 )
@@ -1778,7 +1808,7 @@ struct GlobalTimeAutoClientTests {
         @Test("Re-sync updates lastSyncDate")
         func reSyncUpdatesLastSyncDate() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10),
                     samples: 1
@@ -1850,7 +1880,7 @@ struct GlobalTimeAutoClientTests {
         @Test("stop() after sync preserves cached offset")
         func stopAfterSyncPreservesOffset() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10),
                     samples: 1
@@ -1866,7 +1896,7 @@ struct GlobalTimeAutoClientTests {
         @Test("stop() after sync preserves lastSyncDate")
         func stopAfterSyncPreservesLastSyncDate() async throws {
             let client = GlobalTimeAutoClient(
-                config: GlobalTimeConfig(
+                config: GlobalTimeAutoConfig(
                     server: "time.apple.com",
                     timeout: .seconds(10),
                     samples: 1
@@ -1876,6 +1906,80 @@ struct GlobalTimeAutoClientTests {
             let dateBefore = client.lastSyncDate
             client.stop()
             #expect(client.lastSyncDate == dateBefore)
+        }
+    }
+
+    @Suite("alwaysReactToEvents — Event reaction behavior")
+    struct AlwaysReactToEventsTests {
+
+        @Test("Default (false): isStopped guard still applies when not synced")
+        func defaultFalseStopPreventsReaction() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: false))
+            client.stop()
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents true: isStopped guard still applies")
+        func alwaysReactTrueStopPreventsReaction() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: true))
+            client.stop()
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents false: client does not auto-sync before first manual sync")
+        func falseDoesNotReactBeforeFirstSync() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: false))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents true: client is initialized without crashing before first sync")
+        func trueInitializesWithoutCrash() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: true))
+            #expect(client.isSynced == false)
+        }
+
+        @Test("alwaysReactToEvents false with stop: consistent state")
+        func falseWithStopConsistentState() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: false))
+            client.stop()
+            #expect(client.isSynced == false)
+            #expect(client.offset == 0)
+            #expect(client.lastSyncDate == nil)
+        }
+
+        @Test("alwaysReactToEvents true with stop: consistent state")
+        func trueWithStopConsistentState() {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(alwaysReactToEvents: true))
+            client.stop()
+            #expect(client.isSynced == false)
+            #expect(client.offset == 0)
+            #expect(client.lastSyncDate == nil)
+        }
+
+        @Test("alwaysReactToEvents true: sync still works normally")
+        func trueSyncWorksNormally() async throws {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(
+                server: "time.apple.com",
+                timeout: .seconds(10),
+                samples: 1,
+                alwaysReactToEvents: true
+            ))
+            try await client.sync()
+            #expect(client.isSynced == true)
+            #expect(client.lastSyncDate != nil)
+        }
+
+        @Test("alwaysReactToEvents false: sync still works normally")
+        func falseSyncWorksNormally() async throws {
+            let client = GlobalTimeAutoClient(config: GlobalTimeAutoConfig(
+                server: "time.apple.com",
+                timeout: .seconds(10),
+                samples: 1,
+                alwaysReactToEvents: false
+            ))
+            try await client.sync()
+            #expect(client.isSynced == true)
+            #expect(client.lastSyncDate != nil)
         }
     }
 }
